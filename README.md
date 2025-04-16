@@ -11,10 +11,10 @@ There is future plan to integrate LCD backlight too.
 
 ## Build
 ```sh
-    make
+make
 ```
 
 ## Running
 ```sh
-    # ./build/als-led-backlight
+# ./build/als-led-backlight
 ```
