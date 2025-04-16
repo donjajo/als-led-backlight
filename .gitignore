@@ -1,2 +1,4 @@
 .vscode/
 a.out
+*.o
+build/
