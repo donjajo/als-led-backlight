@@ -3,17 +3,6 @@
 #ifndef _WATCHER_H
     #define _WATCHER_H
 
-    struct watcherthreadargs {
-        void *evt;
-        void *metadata;
-        struct dbuf *dbuf;
-    };
-
-    struct watcherthread {
-        int fd;
-        pthread_t tid;
-    };
-
     struct watcher {
         int fd;
         uint8_t isinotify;
@@ -21,6 +10,19 @@
         struct watcher *next;
         void *metadata;
         void (*destorycallback)(struct watcher *watcher);
+    };
+
+    struct watcherthreadargs {
+        void *evt;
+        void *metadata;
+        struct watcher *watcher;
+        struct dbuf *dbuf;
+    };
+
+    struct watcherthread {
+        int fd;
+        pthread_t tid;
+        struct watcherthreadargs *args;
     };
 
     struct watcherbuf {

@@ -150,7 +150,6 @@ void *watchcallback(void *args)
         pthread_mutex_unlock(&device->mutex);
 
         // printf("Exited thread~~: %ld\n", pthread_self());
-        free(args);
         return NULL;
 }
 

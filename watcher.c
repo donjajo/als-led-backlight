@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <sys/select.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include "watcher.h"
 
@@ -26,14 +27,16 @@ void destorywatcher(struct watcher *watcher, struct watcherbuf *watcherbuf)
 void destroywatcherbuffer(struct watcherbuf *watcherbuf)
 {
     struct watcher *watcher;
+    struct watcher *t;
 
     pthread_mutex_lock(&watcherbuf->mutex);
 
     while (watcherbuf->c--) {
         watcher = watcherbuf->watchers[watcherbuf->c];
         while (watcher->next != NULL) {
+            t = watcher->next;
             destorywatcher(watcher, watcherbuf);
-            watcher = watcher->next;
+            watcher = t;
         }
 
         destorywatcher(watcher, watcherbuf);
@@ -90,6 +93,33 @@ struct watcher *findwatcher(struct watcherbuf *buf, uint32_t wd)
     return watcher;
 }
 
+void *processevent(void *targs)
+{
+    pthread_detach(pthread_self());
+    // sigset_t signal_set;
+    // sigemptyset(&signal_set);
+    // sigaddset(&signal_set, SIGINT);
+    // pthread_sigmask(SIG_BLOCK, &signal_set, NULL);
+
+    struct watcherthreadargs *a = (struct watcherthreadargs *) targs;
+
+    a->watcher->callback(a);
+
+    // free(targs);
+    return NULL;
+}
+
+void threadcleanup(struct watcherthread *thread)
+{
+    pthread_join(thread->tid, NULL);
+    thread->tid = 0;
+
+    if (thread->args != NULL)
+        free(thread->args);
+
+    thread->args = NULL;
+}
+
 /**
  * @brief This inits the watcher. 
  * NB: Actually, this would have worked perfectly without threads. But I realised that /dev/iio* device
@@ -110,6 +140,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
     struct watcher *watcher;
     fd_set readfds;
     int watchfds[5];
+    struct watcherthreadargs *targs = NULL;
     size_t i, j = 0;
 
     // Since we both need to watch inotify events and other descriptors for new data, we are using select to group all of them
@@ -137,7 +168,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
     // Set thread containers
     struct watcherthread threads[j];
     for (i = 0; i < j; i++) {
-        threads[i] = (struct watcherthread) {watchfds[i], 0};
+        threads[i] = (struct watcherthread) {watchfds[i], 0, NULL};
     }
     
     while (1) {
@@ -150,7 +181,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
 
         for (i = 0; i < j; i++) {
             if (FD_ISSET(watchfds[i], &readfds)) {
-                struct watcherthreadargs *targs = malloc(sizeof(struct watcherthreadargs));
+                targs = malloc(sizeof(struct watcherthreadargs));
 
                 n = read(watchfds[i], buffer, len);
 
@@ -174,13 +205,13 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
                         targs->evt = evt;
                         targs->metadata = watcher->metadata;
                         targs->dbuf = dbuf;
+                        targs->watcher = watcher;
 
-                        if (threads[i].tid > 0) {
-                            pthread_join(threads[i].tid, NULL);
-                            threads[i].tid = 0;
-                        }
+                        if (threads[i].tid > 0)
+                            threadcleanup(&threads[i]);
 
-                        pthread_create(&threads[i].tid, NULL, watcher->callback, targs);
+                        pthread_create(&threads[i].tid, NULL, processevent, targs);
+                        threads[i].args = targs;
                         // printf("Started thread~~: %ld\n", threads[i].tid);
 
                         p += sizeof(struct inotify_event) + evt->len;
@@ -190,14 +221,14 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
                     targs->evt = &watchfds[i];
                     targs->metadata = watcher->metadata;
                     targs->dbuf = dbuf;
+                    targs->watcher = watcher;
 
                     // Can only have thread at a time. Else, we wait for it
-                    if (threads[i].tid > 0) {
-                        pthread_join(threads[i].tid, NULL);
-                        threads[i].tid = 0;
-                    }
+                    if (threads[i].tid > 0)
+                            threadcleanup(&threads[i]);
 
-                    pthread_create(&threads[i].tid, NULL, watcher->callback, targs);
+                    pthread_create(&threads[i].tid, NULL, processevent, targs);
+                    threads[i].args = targs;
                     // printf("Started thread: %ld\n", threads[i].tid);
                 }
 
@@ -205,6 +236,12 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
             } else {
                 FD_SET(watchfds[i], &readfds);
             }
+        }
+    }
+
+    for (i = 0; i < j; i++) {
+        if (threads[i].tid > 0) {
+            threadcleanup(&threads[i]);
         }
     }
 }

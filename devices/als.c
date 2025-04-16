@@ -76,7 +76,7 @@ struct scanelement *alsmkscanelement(const char *name, char enabled, char defaul
 }
 
 /**
- * @brief Parser for scan_elements/*_type format
+ * @brief Parser for scan_elements/_type format
  * 
  * @param element 
  * @param buffer 
@@ -273,6 +273,11 @@ int alsenablebuffers(const char *path)
         return ret;
 }
 
+void alsdestroydevice(void *self)
+{
+    alsdestroyscanelements();
+}
+
 /**
  * @brief Load ambient light sensor device into a Device type
  * 
@@ -301,7 +306,7 @@ Device *loadalsdevice(char *path)
     if (strcasecmp(devicename, "als") != 0)
         goto ret;
 
-    result = mkdevice(AMBIENT_LIGHT_SENSOR, "als", 0, ALS_LOW_THRESHOLD, ALS_HIGH_THRESHOLD, path, NULL, NULL, NULL);
+    result = mkdevice(AMBIENT_LIGHT_SENSOR, "als", 0, ALS_LOW_THRESHOLD, ALS_HIGH_THRESHOLD, path, NULL, NULL, alsdestroydevice);
 
     ret:
         if (namefile != NULL) {
@@ -353,7 +358,6 @@ void *alswatchcallback(void *args)
     pthread_mutex_unlock(&device->mutex);
 
     // printf("Exited thread: %ld\n", pthread_self());
-    free(args);
     return NULL;
 }
 

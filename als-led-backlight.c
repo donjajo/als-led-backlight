@@ -1,15 +1,56 @@
 #include <stdio.h>
+#include <signal.h>
 
 #include "common.h"
 #include "devices.h"
 #include "watcher.h"
 
+struct dbuf *devicesbuffer = NULL;
+struct watcherbuf *watcherbuffer = NULL;
+pthread_mutex_t exitmutex;
+uint8_t exited = 0;
+
+void exitgracefully()
+{
+    pthread_mutex_lock(&exitmutex);
+
+    if (exited)
+        return;
+
+    printf("Exiting\n");
+    if (watcherbuffer != NULL) {
+        destroywatcherbuffer(watcherbuffer);
+    }
+
+    if (devicesbuffer != NULL)
+        destorydbuf(devicesbuffer);
+    
+    exited = 1;
+    pthread_mutex_unlock(&exitmutex);
+}
+
+void sighandler(int sig)
+{
+    exitgracefully();
+}
+
 int main()
 {
-    struct dbuf *devicesbuffer = mkdbuf();
-    struct watcherbuf *watcherbuffer;
+    struct sigaction sa;
     int ret = 1;
 
+    pthread_mutex_init(&exitmutex, NULL);
+
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sa.sa_handler = sighandler;
+
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction() failed");
+        goto close;
+    }
+
+    devicesbuffer = mkdbuf();
     if (devicesbuffer == NULL) {
         fprintf(stderr, "Unable to create buffer space");
 
@@ -40,12 +81,10 @@ int main()
 
     ret = 0;
 
-
     initwatcher(watcherbuffer, devicesbuffer);
-    destroywatcherbuffer(watcherbuffer);
+
     close:
-        if (devicesbuffer != NULL)
-            destorydbuf(devicesbuffer);
+        exitgracefully();
 
     return ret;
 }
