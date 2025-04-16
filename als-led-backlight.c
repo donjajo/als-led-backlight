@@ -17,14 +17,14 @@ void exitgracefully()
     if (exited)
         return;
 
-    printf("Exiting\n");
+    printf("Exiting Gracefully\n");
     if (watcherbuffer != NULL) {
         destroywatcherbuffer(watcherbuffer);
     }
 
     if (devicesbuffer != NULL)
         destorydbuf(devicesbuffer);
-    
+
     exited = 1;
     pthread_mutex_unlock(&exitmutex);
 }

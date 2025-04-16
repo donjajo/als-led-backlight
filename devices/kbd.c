@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <math.h>
 
 #include "../common.h"
 #include "../devices.h"
@@ -36,16 +37,25 @@ void adjust(float ambvalue, void *self)
     float prev;
     int writerfd = *((int *) device->meta);
     char data = '1';
+    uint8_t nvalue = 0;
 
     pthread_mutex_lock(&device->mutex);
+
+    if (ambvalue > 100) {
+        nvalue = device->min_value;
+    } else {
+        nvalue = roundf((100 - ambvalue) / (100 / (float) device->max_value));
+    }
+
+    data = nvalue + '0';
 
     if (write(writerfd, &data, sizeof(char)) <= 0) {
         fprintf(stderr, "Unable to adjust keyboard light\n");
         perror("");
     } else {
         prev = device->percentage;
-        device->percentage  = 10;
-        printf("Adjusting percent: %f -> %f\n", device->percentage, prev);
+        device->percentage  = (100/(float) device->max_value) * (float) nvalue;
+        printf("Keyboard light adjusted from: %f -> %f\n", prev, device->percentage);
     }
 
     pthread_mutex_unlock(&device->mutex);

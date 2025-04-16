@@ -350,7 +350,7 @@ void *alswatchcallback(void *args)
 
             device->percentage = (100/(float) device->max_value) * (float) buffer;
             adjustdevices(device->percentage, dbuf);
-            printf("Read: %lf\n", device->percentage);
+            printf("ALS Percentage: %lf\n", device->percentage);
         }
     }
     // printf("Modified: %s, fd: %d\n", device->path, fd);
