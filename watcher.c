@@ -95,23 +95,21 @@ struct watcher *findwatcher(struct watcherbuf *buf, uint32_t wd)
 
 void *processevent(void *targs)
 {
-    pthread_detach(pthread_self());
-    // sigset_t signal_set;
-    // sigemptyset(&signal_set);
-    // sigaddset(&signal_set, SIGINT);
-    // pthread_sigmask(SIG_BLOCK, &signal_set, NULL);
-
     struct watcherthreadargs *a = (struct watcherthreadargs *) targs;
 
     a->watcher->callback(a);
 
-    // free(targs);
     return NULL;
 }
 
-void threadcleanup(struct watcherthread *thread)
+void threadcleanup(struct watcherthread *thread, int kill)
 {
-    pthread_join(thread->tid, NULL);
+    if (kill) {
+        pthread_kill(thread->tid, kill);
+    } else {
+        pthread_join(thread->tid, NULL);
+    }
+
     thread->tid = 0;
 
     if (thread->args != NULL)
@@ -153,8 +151,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
 
         if (watcher->isinotify == 0) {
             FD_SET(watcher->fd, &readfds);
-            watchfds[i] = watcher->fd;
-            j++;
+            watchfds[j++] = watcher->fd;
         }
 
         while ((watcher = watcher->next) != NULL) {
@@ -208,7 +205,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
                         targs->watcher = watcher;
 
                         if (threads[i].tid > 0)
-                            threadcleanup(&threads[i]);
+                            threadcleanup(&threads[i], 0);
 
                         pthread_create(&threads[i].tid, NULL, processevent, targs);
                         threads[i].args = targs;
@@ -225,7 +222,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
 
                     // Can only have thread at a time. Else, we wait for it
                     if (threads[i].tid > 0)
-                            threadcleanup(&threads[i]);
+                            threadcleanup(&threads[i], 0);
 
                     pthread_create(&threads[i].tid, NULL, processevent, targs);
                     threads[i].args = targs;
@@ -241,7 +238,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
 
     for (i = 0; i < j; i++) {
         if (threads[i].tid > 0) {
-            threadcleanup(&threads[i]);
+            threadcleanup(&threads[i], SIGINT);
         }
     }
 }
