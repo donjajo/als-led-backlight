@@ -335,7 +335,9 @@ void *alswatchcallback(void *args)
             int buffer = 0;
             ssize_t n = 0;
 
-            while ((n = read(fd, (&buffer)+n, sizeof(char[sz - n]))) > 0 && n != sz);
+            n = read(fd, &buffer, sizeof(char[sz]));
+
+            printf("Read %ld bytes from %s element\n", n, element->name);
 
             if (n <= 0) {
                 fprintf(stderr, "Reading of %s element in %s failed\n", element->name, device->path);
