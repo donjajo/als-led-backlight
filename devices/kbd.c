@@ -38,6 +38,7 @@ void adjust(float ambvalue, void *self)
     int writerfd = *((int *) device->meta);
     char data = '1';
     uint8_t nvalue = 0;
+    float npercentage;
 
     pthread_mutex_lock(&device->mutex);
 
@@ -47,15 +48,19 @@ void adjust(float ambvalue, void *self)
         nvalue = roundf((100 - ambvalue) / (100 / (float) device->max_value));
     }
 
-    data = nvalue + '0';
+    npercentage = (100/(float) device->max_value) * (float) nvalue;
 
-    if (write(writerfd, &data, sizeof(char)) <= 0) {
-        fprintf(stderr, "Unable to adjust keyboard light\n");
-        perror("");
-    } else {
-        prev = device->percentage;
-        device->percentage  = (100/(float) device->max_value) * (float) nvalue;
-        printf("Keyboard light adjusted from: %f -> %f\n", prev, device->percentage);
+    if (npercentage != device->percentage) {
+        data = nvalue + '0';
+
+        if (write(writerfd, &data, sizeof(char)) <= 0) {
+            fprintf(stderr, "Unable to adjust keyboard light\n");
+            perror("");
+        } else {
+            prev = device->percentage;
+            device->percentage  = npercentage;
+            printf("Keyboard light adjusted from: %f -> %f\n", prev, device->percentage);
+        }
     }
 
     pthread_mutex_unlock(&device->mutex);
