@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <stdint.h>
 
 #include "common.h"
 
@@ -52,4 +53,28 @@ int setblocking(int fd, int status)
     }
 
     return fcntl(fd, F_SETFL, flags);
+}
+
+char *strrchrr(const char *s, int c)
+{
+    size_t i;
+    ssize_t pos = -1;
+    char *buf = NULL;
+
+    for (i = 0; s[i] != '\0'; i++) {
+        if (s[i] == c) {
+            pos = i;
+        }
+    }
+
+    if (pos > -1) {
+        buf = calloc(pos+1, sizeof(char));
+        if (buf == NULL) {
+            perror("malloc() failed");
+        } else {
+            strncpy(buf, s, pos);
+        }
+    }
+
+    return buf;
 }

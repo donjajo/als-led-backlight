@@ -6,147 +6,12 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "../common.h"
 #include "../devices.h"
+#include "./als/scanelements.h"
 #include "als.h"
-
-struct scanelements scanelements = {NULL, 0, '0', -1};
-
-int alsaddscanelement(struct scanelement *element)
-{
-    scanelements.elements = realloc(scanelements.elements, sizeof(struct scanelement*[scanelements.n + 1]));
-    if (scanelements.elements == NULL) {
-        perror("realloc() failed");
-        return 0;
-    }
-
-    scanelements.elements[scanelements.n++] = element;
-
-    return 1;
-}
-
-void alsdestroyscanelement(struct scanelement *element)
-{
-    if (element->enabled != '0' && element->defaultvalue != element->enabled)
-        write(element->fd, &element->defaultvalue, sizeof(char));
-
-    close(element->fd);
-
-    free(element);
-}
-
-void alsdestroyscanelements()
-{
-    char data = '0';
-
-    if (scanelements.bufferfd >= 0)
-        write(scanelements.bufferfd, &data, sizeof(char));
-
-    while (scanelements.n--) {
-        alsdestroyscanelement(scanelements.elements[scanelements.n]);
-    }
-
-    if (scanelements.bufferfd >= 0) {
-        if (scanelements.bufferdefaultvalue != '1')
-            write(scanelements.bufferfd, &scanelements.bufferdefaultvalue, sizeof(char));
-
-        close(scanelements.bufferfd);
-    }
-
-    if (scanelements.elements != NULL)
-        free(scanelements.elements);
-}
-
-struct scanelement *alsmkscanelement(const char *name, char enabled, char defaultvalue, int fd)
-{
-    struct scanelement *element = malloc(sizeof(struct scanelement));
-    if (element == NULL) {
-        return element;
-    }
-
-    element->enabled = enabled;
-    element->defaultvalue = defaultvalue;
-    element->fd = fd;
-    element->datatype = (struct elementdatatype) {0, 0, 0, 0, 0, 0};
-    memset(element->name, 0, sizeof(char[NAME_MAX]));
-    strncpy(element->name, name, NAME_MAX);
-
-    return element;
-}
-
-/**
- * @brief Parser for scan_elements/_type format
- * 
- * @param element 
- * @param buffer 
- * @return int 
- */
-int parsedatatypebuffer(struct scanelement *element, char *buffer)
-{
-    size_t i, j;
-    char buf[ALS_DATATYPE_BUFSIZE] = {0};
-    uint8_t hasrepeat = 0;
-    int ret = 0;
-
-    // char buffer[] = "le:s12/16X3>>4";
-    rtrim(buffer, '\n');
-
-    for (i = 0; buffer[i] != '\0'; i++) {
-        if (i == 1) {
-            element->datatype.endianness = buffer[0] == 'b' ? BIGENDIAN : LITTLEENDIAN;
-            continue;
-        }
-
-        if (i == 3) {
-            element->datatype.twoscompl = buffer[i] == 'u' ? UNSIGNEDINT : SIGNEDINT;
-            continue;
-        }
-
-        if (i > 3) {
-            if (buffer[i] == '/') {
-                memcpy(buf, &buffer[4], sizeof(char[i-4]));
-                j = i+1;
-                element->datatype.validbits = atoi(buf);
-                
-                goto done;
-            }
-
-            if (buffer[i] == 'X') {
-                memcpy(buf, &buffer[j], sizeof(char[i - j]));
-                element->datatype.bitsize = atoi(buf);
-                hasrepeat = 1;
-                j = i+1;
-                goto done;
-            }
-
-            if (buffer[i] == '>') {
-                memcpy(buf, &buffer[j], sizeof(char[i - j]));
-
-                if (hasrepeat == 0) {
-                    element->datatype.bitsize = atoi(buf);
-                } else {
-                    element->datatype.repeat = atoi(buf);
-                }
-
-                j = i = i+2;
-                ret = 1;
-                goto done;
-            }
-        }
-
-        done:
-        memset(buf, 0, sizeof(char[ALS_DATATYPE_BUFSIZE]));
-    }
-
-    if (ret == 1) {
-        memcpy(buf, &buffer[j], sizeof(char[i - j]));
-        element->datatype.shifts = atoi(buf);
-    }
-
-    // printf("Endian: %d\nSigned: %d\nvalidbits: %u\ntotalbits: %u\nRepeat:%u\nshift: %u\n", element->datatype.endianness, element->datatype.twoscompl, element->datatype.validbits, element->datatype.bitsize, element->datatype.repeat, element->datatype.shifts);
-    return ret;
-}
 
 /**
  * @brief Enable IIO scan_elements and buffering
@@ -157,12 +22,9 @@ int parsedatatypebuffer(struct scanelement *element, char *buffer)
 int alsenablebuffers(const char *path)
 {
     char filepath[PATH_MAX] = {0};
-    size_t i, len;
-    char *elements[] = {"in_illuminance"};
-    char datatypebuffer[ALS_DATATYPE_BUFSIZE+1] = {0};
-    int fd, bufferfd = -1, ret = 0;
+    int bufferfd = -1, ret = 0;
     char data;
-    struct scanelement *element;
+    struct scanelements *scanelements = alsgetscanelements();
 
     strcat(filepath, path);
     strcat(filepath, "/buffer/enable");
@@ -180,7 +42,7 @@ int alsenablebuffers(const char *path)
         goto result;
     }
 
-    scanelements.bufferdefaultvalue = data;
+    scanelements->bufferdefaultvalue = data;
 
     if (data == '1') {
         data = '0';
@@ -192,64 +54,8 @@ int alsenablebuffers(const char *path)
         }
     }
 
-    for (i = 0; i < sizeof(elements)/sizeof(elements[0]); i++) {
-        memset(filepath, 0, sizeof(char[PATH_MAX]));
-        strcat(filepath, path);
-        strcat(filepath, "/scan_elements/");
-        strcat(filepath, elements[i]);
-        strcat(filepath, "_en");
-
-        len = strlen(filepath);
-
-        fd = open(filepath, O_RDWR);
-        if (fd == -1) {
-            perror("open() failed");
-            fprintf(stderr, "Unable to open file for rw: %s\n", filepath);
-        } else {
-            element = alsmkscanelement(elements[i], '0', '0', fd);
-
-            if (read(fd, &data, sizeof(char)) <= 0) {
-                perror("read() failed");
-            } else {
-                element->defaultvalue = data;
-                element->enabled = '1';
-                if (data != '1') {
-                    if (write(fd, &element->enabled, sizeof(char)) == -1) {
-                        element->enabled = '0';
-                        perror("write() failed");
-                    }
-                }
-            }
-
-            // Handle data type structure
-            memcpy(&filepath[len-2], "type", sizeof(char[5]));
-            fd = open(filepath, O_RDONLY);
-            if (fd == -1) {
-                fprintf(stderr, "Error reading file %s\n", filepath);
-                perror("");
-                goto result;
-            }
-
-            if (read(fd, datatypebuffer, sizeof(char[ALS_DATATYPE_BUFSIZE])) <= 0) {
-                fprintf(stderr, "Error reading data type file %s", filepath);
-                perror("");
-                close(fd);
-                goto result;
-            }
-
-            close(fd);
-
-            if (parsedatatypebuffer(element, datatypebuffer) == 0) {
-                fprintf(stderr, "Error parsing element data type\n");
-                goto result;
-            }
-            
-            if (alsaddscanelement(element) == 0) {
-                fprintf(stderr, "Error adding scan element\n");
-                goto result;
-            }
-        }
-    }
+    if (!alsloadscanelements(path))
+        goto result;
 
     // Enable back buffer
     data = '1';
@@ -259,15 +65,13 @@ int alsenablebuffers(const char *path)
     }
 
     ret = 1;
-    scanelements.bufferfd = bufferfd;
+    scanelements->bufferfd = bufferfd;
 
     result:
         if (ret == 0) {
             if (bufferfd >= 0) {
                 close(bufferfd);
             }
-
-            alsdestroyscanelements();
         }
 
         return ret;
@@ -324,33 +128,35 @@ void *alswatchcallback(void *args)
     struct dbuf *dbuf = _args->dbuf;
     size_t i;
     struct scanelement *element;
+    struct scanelements *scanelements = alsgetscanelements();
+    size_t sz = scanelements->totalbits / 8;
+    unsigned char buffer[sz];
+    ssize_t n = 0;
     
     pthread_mutex_lock(&device->mutex);
 
-    for (i = 0; i < scanelements.n; i++) {
-        element = scanelements.elements[i];
+    n = read(fd, &buffer, sizeof(unsigned char[sz]));
 
-        if (strcasecmp("in_illuminance", element->name) == 0) {
-            uint8_t sz = element->datatype.bitsize/8;
-            int buffer = 0;
-            ssize_t n = 0;
+    if (n <= 0) {
+        fprintf(stderr, "Reading of %s failed\n", device->path);
+        perror("read() failed");
+    }
 
-            n = read(fd, &buffer, sizeof(char[sz]));
+    // printf("Read %ld bytes from element\n", n);
 
-            printf("Read %ld bytes from %s element\n", n, element->name);
+    for (i = 0; i < scanelements->n; i++) {
+        element = scanelements->elements[i];
 
-            if (n <= 0) {
-                fprintf(stderr, "Reading of %s element in %s failed\n", element->name, device->path);
-                perror("read() failed");
-                continue;
-            }
-
+        if (element->type == IN_ILLUMINANCE && element->enabled == '1') {
+            int32_t *value = (int32_t *) buffer;
            
-            buffer = buffer >> element->datatype.shifts;
-            // buffer = buffer & (element->datatype.validbits/8);
-            
+            // I need help here when other elements are enabled
 
-            device->percentage = (100/(float) device->max_value) * (float) buffer;
+            // *value = *value << element->index;
+            *value = *value >> element->datatype.shifts;
+            // *value = *value & ~(element->datatype.validbits/8);
+
+            device->percentage = (100/(float) device->max_value) * (float) *value;
             adjustdevices(device->percentage, dbuf);
             printf("ALS Percentage: %lf\n", device->percentage);
         }
@@ -363,11 +169,12 @@ void *alswatchcallback(void *args)
     return NULL;
 }
 
-int scanals(struct dbuf *dbuf, struct watcherbuf *watcherbuf)
+int scanals(struct dbuf *dbuf)
 {
     int ret = 0;
     struct dirent *dirent;
     char devfile[PATH_MAX] = {0};
+    Device *device = NULL;
     char *sysfsdir = strcat_("/sys/bus/iio/devices", "/");
     if (sysfsdir == NULL) {
         goto close;
@@ -380,7 +187,6 @@ int scanals(struct dbuf *dbuf, struct watcherbuf *watcherbuf)
 
     while ((dirent = readdir(dir)) != NULL) {
         char *devicefile = strcat_(sysfsdir, dirent->d_name);
-        Device *device;
 
         if (devicefile == NULL) {
             fprintf(stderr, "Unable to determine als device");
@@ -409,7 +215,7 @@ int scanals(struct dbuf *dbuf, struct watcherbuf *watcherbuf)
                     //     printf("Read: %ld\n", dd);
                     // }
                 
-                    watch(watcherbuf, devfile, 0, alswatchcallback, device, NULL);
+                    watch(devfile, 0, alswatchcallback, device, NULL);
                 }
 
                 free(devicefile);
@@ -431,5 +237,10 @@ int scanals(struct dbuf *dbuf, struct watcherbuf *watcherbuf)
         if (sysfsdir != NULL) {
             free(sysfsdir);
         }
+
+        if (ret == 0) {
+            destorydevice(device);
+        }
+
         return ret;
 }

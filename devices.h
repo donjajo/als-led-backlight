@@ -31,7 +31,7 @@
         size_t c;
     };
 
-    int scandevices(enum Device_Type type, struct dbuf *dbuf, struct watcherbuf *watcherbuf);
+    int scandevices(enum Device_Type type, struct dbuf *dbuf);
     Device *mkdevice(enum Device_Type type, const char *vendor, float percentage, size_t min_value, size_t max_value, const char *path, void (*adjust)(float ambvalue, void *self), void *meta, void (*destorycallback)(void *self));
     void destorydevice(Device *device);
     struct dbuf *mkdbuf();

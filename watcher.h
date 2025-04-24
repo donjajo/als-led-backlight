@@ -33,7 +33,7 @@
     };
 
     struct watcherbuf *mkwatcherbuffer();
-    int watch(struct watcherbuf *watcherbuf, const char *pathname, uint32_t mask, void *(*callback)(void *args), void *metadata, void (*destorycallback)(struct watcher *watcher));
-    void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf);
-    void destroywatcherbuffer(struct watcherbuf *watcherbuf);
+    int watch(const char *pathname, uint32_t mask, void *(*callback)(void *args), void *metadata, void (*destorycallback)(struct watcher *watcher));
+    void initwatcher(struct dbuf *dbuf);
+    void destroywatcherbuffer();
 #endif

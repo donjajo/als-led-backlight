@@ -11,7 +11,9 @@
 
 #include "watcher.h"
 
-void destorywatcher(struct watcher *watcher, struct watcherbuf *watcherbuf)
+struct watcherbuf *watcherbuf = NULL;
+
+void destorywatcher(struct watcher *watcher)
 {
     if (watcher->destorycallback != NULL)
         watcher->destorycallback(watcher);
@@ -24,10 +26,13 @@ void destorywatcher(struct watcher *watcher, struct watcherbuf *watcherbuf)
     free(watcher);
 }
 
-void destroywatcherbuffer(struct watcherbuf *watcherbuf)
+void destroywatcherbuffer()
 {
     struct watcher *watcher;
     struct watcher *t;
+
+    if (watcherbuf == NULL)
+        return;
 
     pthread_mutex_lock(&watcherbuf->mutex);
 
@@ -35,11 +40,11 @@ void destroywatcherbuffer(struct watcherbuf *watcherbuf)
         watcher = watcherbuf->watchers[watcherbuf->c];
         while (watcher->next != NULL) {
             t = watcher->next;
-            destorywatcher(watcher, watcherbuf);
+            destorywatcher(watcher);
             watcher = t;
         }
 
-        destorywatcher(watcher, watcherbuf);
+        destorywatcher(watcher);
     }
 
     if (watcherbuf->watchers != NULL)
@@ -48,47 +53,56 @@ void destroywatcherbuffer(struct watcherbuf *watcherbuf)
     pthread_mutex_unlock(&watcherbuf->mutex);
     pthread_mutex_destroy(&watcherbuf->mutex);
     free(watcherbuf);
+    watcherbuf = NULL;
 }
 
 struct watcherbuf *mkwatcherbuffer()
 {
-    struct watcherbuf *buf = malloc(sizeof(struct watcherbuf));
-    if (buf == NULL) {
+    watcherbuf = malloc(sizeof(struct watcherbuf));
+    if (watcherbuf == NULL) {
         perror("malloc() failed");
         return NULL;
     }
 
-    buf->fd = inotify_init();
-    if (buf->fd < 0) {
+    watcherbuf->fd = inotify_init();
+    if (watcherbuf->fd < 0) {
         perror("inotify_init() failed");
 
         goto close;
     }
     
-    buf->watchers = NULL;
-    buf->c = 0;
-    if (pthread_mutex_init(&buf->mutex, NULL) != 0) {
+    watcherbuf->watchers = NULL;
+    watcherbuf->c = 0;
+    if (pthread_mutex_init(&watcherbuf->mutex, NULL) != 0) {
         perror("pthread_mutex_init() failed");
 
         goto close;
     }
 
-    return buf;
+    return watcherbuf;
 
     close:
-        if (buf != NULL)
-            destroywatcherbuffer(buf);
+        if (watcherbuf != NULL)
+            destroywatcherbuffer();
 
         return NULL;
 }
 
-struct watcher *findwatcher(struct watcherbuf *buf, uint32_t wd)
+struct watcher *findwatcher(uint32_t wd, uint8_t isinotify)
 {
-    size_t i = wd % buf->c;
-    struct watcher *watcher = buf->watchers[i];
+    size_t i = watcherbuf->c;
+    struct watcher *watcher;
 
-    while (watcher->fd != wd && watcher->next != NULL)
-        watcher = watcher->next;
+    while (i--) {
+        watcher = watcherbuf->watchers[i];
+
+        while (watcher != NULL && watcher->fd != wd) {
+            watcher = watcher->next;
+        }
+
+        if (watcher != NULL)
+            break;
+    }
 
     return watcher;
 }
@@ -125,10 +139,9 @@ void threadcleanup(struct watcherthread *thread, int kill)
  * To prevent other devices' event from blocking others, I adopted threads for that. But each device must only
  * have one thread at a time so we handle cleanup properly.
  * 
- * @param buf 
  * @param dbuf 
  */
-void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
+void initwatcher(struct dbuf *dbuf)
 {
     ssize_t n;
     size_t len = sizeof(struct inotify_event) + NAME_MAX + 1;
@@ -143,11 +156,11 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
 
     // Since we both need to watch inotify events and other descriptors for new data, we are using select to group all of them
     FD_ZERO(&readfds);
-    FD_SET(buf->fd, &readfds);
-    watchfds[j++] = buf->fd;
+    FD_SET(watcherbuf->fd, &readfds);
+    watchfds[j++] = watcherbuf->fd;
 
-    for (i = 0; i < buf->c; i++) {
-        watcher = buf->watchers[i];
+    for (i = 0; i < watcherbuf->c; i++) {
+        watcher = watcherbuf->watchers[i];
 
         if (watcher->isinotify == 0) {
             FD_SET(watcher->fd, &readfds);
@@ -192,13 +205,13 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
                     break;
                 }
 
-                pthread_mutex_lock(&buf->mutex);
+                pthread_mutex_lock(&watcherbuf->mutex);
 
-                if (watchfds[i] == buf->fd) {
+                if (watchfds[i] == watcherbuf->fd) {
                     for (p = buffer; p < buffer + n;) {
                         evt = (struct inotify_event *) p;
             
-                        watcher = findwatcher(buf, evt->wd);
+                        watcher = findwatcher(evt->wd, 1);
                         targs->evt = evt;
                         targs->metadata = watcher->metadata;
                         targs->dbuf = dbuf;
@@ -214,7 +227,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
                         p += sizeof(struct inotify_event) + evt->len;
                     }
                 } else {
-                    watcher = findwatcher(buf, watchfds[i]);
+                    watcher = findwatcher(watchfds[i], 0);
                     targs->evt = &watchfds[i];
                     targs->metadata = watcher->metadata;
                     targs->dbuf = dbuf;
@@ -229,7 +242,7 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
                     // printf("Started thread: %ld\n", threads[i].tid);
                 }
 
-                pthread_mutex_unlock(&buf->mutex);
+                pthread_mutex_unlock(&watcherbuf->mutex);
             } else {
                 FD_SET(watchfds[i], &readfds);
             }
@@ -246,7 +259,6 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
 /**
  * @brief Watch a filesystem object. Since some devices do not support inotify, we can watch them using select.
  * 
- * @param watcherbuf 
  * @param pathname 
  * @param mask      Providing 0 here means do not use inotify
  * @param callback 
@@ -254,11 +266,10 @@ void initwatcher(struct watcherbuf *buf, struct dbuf *dbuf)
  * @param destorycallback 
  * @return int 
  */
-int watch(struct watcherbuf *watcherbuf, const char *pathname, uint32_t mask, void *(*callback)(void *args), void *metadata, void (*destorycallback)(struct watcher *watcher))
+int watch(const char *pathname, uint32_t mask, void *(*callback)(void *args), void *metadata, void (*destorycallback)(struct watcher *watcher))
 {
-    int ret = 0, fd, nextindex;
+    int ret = 0, fd;
     struct watcher **watchers;
-    struct watcher *current;
     uint8_t isinotify = mask != 0;
 
     pthread_mutex_lock(&watcherbuf->mutex);
@@ -302,20 +313,8 @@ int watch(struct watcherbuf *watcherbuf, const char *pathname, uint32_t mask, vo
         goto result;
     }
     
-    nextindex = fd % (watcherbuf->c+1);
     watcherbuf->watchers = watchers;
-
-    if (nextindex > watcherbuf->c-1 || watcherbuf->c == 0) {
-        watcherbuf->watchers[nextindex] = watcher;
-        watcherbuf->c++;
-    } else {
-        current = watcherbuf->watchers[nextindex];
-        while (current->next != NULL) {
-            current = current->next;
-        }
-
-        current->next = watcher;
-    }
+    watcherbuf->watchers[watcherbuf->c++] = watcher;
 
     ret = 1;
     // printf("Added watcher for %s; %d\n", pathname, fd);

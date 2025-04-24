@@ -6,7 +6,6 @@
 #include "watcher.h"
 
 struct dbuf *devicesbuffer = NULL;
-struct watcherbuf *watcherbuffer = NULL;
 pthread_mutex_t exitmutex;
 uint8_t exited = 0;
 
@@ -18,9 +17,8 @@ void exitgracefully()
         return;
 
     printf("Exiting Gracefully\n");
-    if (watcherbuffer != NULL) {
-        destroywatcherbuffer(watcherbuffer);
-    }
+
+    destroywatcherbuffer();
 
     if (devicesbuffer != NULL)
         destorydbuf(devicesbuffer);
@@ -57,8 +55,7 @@ int main()
         goto close;
     }
 
-    watcherbuffer = mkwatcherbuffer();
-    if (watcherbuffer == NULL) {
+    if (mkwatcherbuffer() == NULL) {
         fprintf(stderr, "Error creating watcher buffer\n");
 
         goto close;
@@ -67,13 +64,13 @@ int main()
     printf("Ambient Light Sensor LED Backlight app started\n");
     printf("Scanning available devices...\n");
 
-    if (!scandevices(KEYBOARD_BACKLIGHT, devicesbuffer, watcherbuffer)) {
+    if (!scandevices(KEYBOARD_BACKLIGHT, devicesbuffer)) {
         fprintf(stderr, "Error detecting keyboard light\n");
 
         goto close;
     }
 
-    if (!scandevices(AMBIENT_LIGHT_SENSOR, devicesbuffer, watcherbuffer)) {
+    if (!scandevices(AMBIENT_LIGHT_SENSOR, devicesbuffer)) {
         fprintf(stderr, "Error detecting ambient light sensor device\n");
 
         goto close;
@@ -81,7 +78,7 @@ int main()
 
     ret = 0;
 
-    initwatcher(watcherbuffer, devicesbuffer);
+    initwatcher(devicesbuffer);
 
     close:
         exitgracefully();

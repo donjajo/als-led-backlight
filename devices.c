@@ -100,14 +100,14 @@ void adjustdevices(float alspercent, struct dbuf *dbuf)
     }
 }
 
-int scandevices(enum Device_Type type, struct dbuf *dbuf, struct watcherbuf *watcherbuf)
+int scandevices(enum Device_Type type, struct dbuf *dbuf)
 {
     switch (type) {
         case KEYBOARD_BACKLIGHT:
-            return scankbdbacklight(dbuf, watcherbuf);
+            return scankbdbacklight(dbuf);
             break;
         case AMBIENT_LIGHT_SENSOR:
-            return scanals(dbuf, watcherbuf);
+            return scanals(dbuf);
         default:
             fprintf(stderr, "Unknown device type provided\n");
     }

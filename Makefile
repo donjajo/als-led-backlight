@@ -2,7 +2,7 @@ CC			= gcc
 PROG		= als-led-backlight
 CFLAGS		= -Wall -lm -pthread
 BUILDDIR	= build/
-SRC			= $(wildcard ./*.c) $(wildcard ./devices/*.c)
+SRC			= $(wildcard ./*.c) $(wildcard ./devices/*.c) $(wildcard ./devices/*/*.c)
 BINS		= $(SRC:%.c=%.o)
 SHELL		= /bin/bash
 
@@ -21,4 +21,4 @@ $(PROG): $(BINS)
 
 clean:
 	rm -rf build/
-	rm *.o devices/*.o
+	find ./ -type f -name '*.o' -exec rm {} +

@@ -168,7 +168,7 @@ void *watchcallback(void *args)
         return NULL;
 }
 
-int scankbdbacklight(struct dbuf *dbuf, struct watcherbuf *watcherbuf)
+int scankbdbacklight(struct dbuf *dbuf)
 {
     struct dirent *file;
 
@@ -207,7 +207,7 @@ int scankbdbacklight(struct dbuf *dbuf, struct watcherbuf *watcherbuf)
             if (device != NULL) {
                 printf("Detected keyboard light with vendor: %s\n", device->vendor);
                 if (adddevice(device, dbuf) != NULL) {
-                    watch(watcherbuf, sysfsdir, IN_MODIFY, watchcallback, device, NULL);
+                    watch(sysfsdir, IN_MODIFY, watchcallback, device, NULL);
                 }
             } else {
                 fprintf(stderr, "Error loading device: %s", sysfsdir);
