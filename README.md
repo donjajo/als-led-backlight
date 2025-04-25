@@ -15,6 +15,9 @@ There is future plan to integrate LCD backlight too.
 make
 ```
 
+## Config
+Currently, it reads config file from `/etc/als-led-backlight.conf`. Copy the `config.sample` file in this repository to the location
+
 ## Running
 ```sh
 # ./build/als-led-backlight

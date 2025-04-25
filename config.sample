@@ -1,3 +1,8 @@
-als_high_threshold = 428
-als_low_threshold = 10000
+# The brightest light threshold reading
+als_high_threshold = 10000
+
+# The lowest light threshold reading
+als_low_threshold = 428
+
+# Coming soon - To leave the keyboard state when it has been manually adjusted
 kbd_pause_on_manual_adjust = 0
