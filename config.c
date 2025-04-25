@@ -58,7 +58,7 @@ ssize_t parseconfigline(char line[ALS_CONFIG_LINE_MAX], ssize_t n)
         }
     }
 
-    if (line[0] != ALS_CONFIG_COMMENT_CHAR) {
+    if (line[0] != ALS_CONFIG_COMMENT_CHAR && line[0] != 0) {
         key = strrchrr(line, ALS_CONFIG_ASSIGN_CHAR);
         if (key == NULL) {
             fprintf(stderr, "Error parsing config file on line %ld\n", ln);
