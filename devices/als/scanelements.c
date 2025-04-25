@@ -11,6 +11,7 @@
 #include "../../common.h"
 #include "scanelements.h"
 #include "../../watcher.h"
+#include "../../config.h"
 
 struct scanelements scanelements = {NULL, 0, '0', -1, PTHREAD_MUTEX_INITIALIZER, 0};
 
@@ -402,6 +403,7 @@ uint8_t alsloadscanelements(const char *path)
     char *elementname = NULL;
     enum ScanElementType elementtype;
     size_t j;
+    Config config  = getconfig();
 
     strcat(filepath, path);
     strcat(filepath, "/scan_elements/");
@@ -461,14 +463,16 @@ uint8_t alsloadscanelements(const char *path)
         }
     }
 
-    // for (size_t i = 0; i < scanelements.n; i++) {
-    //     element = scanelements.elements[i];
-    //     printf("Element: %d\n", element->type);
-    //     printf("Index: %ld\n", element->index);
-    //     printf("Enabled: %c\n", element->defaultvalue);
-    //     printf("Endian: %d\nSigned: %d\nvalidbits: %u\ntotalbits: %u\nRepeat:%u\nshift: %u\n", element->datatype.endianness, element->datatype.twoscompl, element->datatype.validbits, element->datatype.bitsize, element->datatype.repeat, element->datatype.shifts);
-    //     printf("\n");
-    // }
+    if (config.verbose >= ALS_VERBOSE_LEVEL_2) {
+        for (size_t i = 0; i < scanelements.n; i++) {
+            element = scanelements.elements[i];
+            printf("Element: %d\n", element->type);
+            printf("Index: %ld\n", element->index);
+            printf("Enabled: %c\n", element->defaultvalue);
+            printf("Endian: %d\nSigned: %d\nvalidbits: %u\ntotalbits: %u\nRepeat:%u\nshift: %u\n", element->datatype.endianness, element->datatype.twoscompl, element->datatype.validbits, element->datatype.bitsize, element->datatype.repeat, element->datatype.shifts);
+            printf("\n");
+        }
+    }
 
     if (watch(scanelementsdir, IN_MODIFY, alsscanelementswatchcallback, NULL, NULL) == 0) {
         fprintf(stderr, "Error watching scan_elements files\n");

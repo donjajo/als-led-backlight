@@ -29,6 +29,16 @@ int32_t loadconfigline(const char *key, const char *value, size_t ln)
 
         config.kbdpauseonmanualadjust = value[0];
         ret = 1;
+    } else if (strcasecmp(key, "verbose") == 0) {
+        uint8_t v = value[0] - '0';
+        if (v != ALS_VERBOSE_LEVEL_0 && v != ALS_VERBOSE_LEVEL_1 && v != ALS_VERBOSE_LEVEL_2) {
+            fprintf(stderr, "Invalid config value for %s. Expected 0, 1, 2. Got %c\n", key, value[0]);
+            
+            goto result;
+        }
+
+        config.verbose = v;
+        ret = 1;
     } else {
         fprintf(stderr, "Unknown config key %s on line %ld\n", key, ln);
         ret = -1;
@@ -93,6 +103,7 @@ int8_t configinit()
     config.alshighthreshold = ALS_DEFAULT_HIGH_THRESHOLD;
     config.alslowthreshold = ALS_DEFAULT_LOW_THRESHOLD;
     config.kbdpauseonmanualadjust = 0;
+    config.verbose = ALS_VERBOSE_LEVEL_1;
 
     if (access(ALS_CONFIG_PATH, F_OK) == 0) {
         fd = open(ALS_CONFIG_PATH, O_RDONLY);

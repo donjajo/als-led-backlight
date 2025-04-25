@@ -11,6 +11,7 @@
 #include "../common.h"
 #include "../devices.h"
 #include "../watcher.h"
+#include "../config.h"
 
 char *getvendorname(char *dirname)
 {
@@ -39,6 +40,7 @@ void adjust(float ambvalue, void *self)
     char data = '1';
     uint8_t nvalue = 0;
     float npercentage;
+    Config config = getconfig();
 
     pthread_mutex_lock(&device->mutex);
 
@@ -59,7 +61,9 @@ void adjust(float ambvalue, void *self)
         } else {
             prev = device->percentage;
             device->percentage  = npercentage;
-            printf("Keyboard light adjusted from: %f -> %f\n", prev, device->percentage);
+
+            if (config.verbose >= ALS_VERBOSE_LEVEL_1)
+                printf("Keyboard light adjusted from: %f -> %f\n", prev, device->percentage);
         }
     }
 
@@ -135,6 +139,7 @@ void *watchcallback(void *args)
     int fd;
     char data;
     ssize_t n;
+    Config config = getconfig();
 
     pthread_mutex_lock(&device->mutex);
     strncat(filepath, device->path, PATH_MAX);
@@ -159,18 +164,22 @@ void *watchcallback(void *args)
     close(fd);
 
     device->percentage = (100/(float) device->max_value) * (float) (data - '0');
-    printf("Keyboard light adjusted to: %.0f\n", device->percentage);
+
+    if (config.verbose >= ALS_VERBOSE_LEVEL_1)
+        printf("Keyboard light adjusted to: %.0f\n", device->percentage);
 
     ret:
         pthread_mutex_unlock(&device->mutex);
 
-        // printf("Exited thread~~: %ld\n", pthread_self());
+        if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+            printf("Exited thread~~: %ld\n", pthread_self());
         return NULL;
 }
 
 int scankbdbacklight(struct dbuf *dbuf)
 {
     struct dirent *file;
+    Config config = getconfig();
 
     // 17 is length of sysfs path
     char *sysfsdir = calloc(17+1, sizeof(char));
@@ -205,7 +214,9 @@ int scankbdbacklight(struct dbuf *dbuf)
             strcat(sysfsdir, file->d_name);
             device = loaddevice(sysfsdir, vendor);
             if (device != NULL) {
-                printf("Detected keyboard light with vendor: %s\n", device->vendor);
+                if (config.verbose >= ALS_VERBOSE_LEVEL_1)
+                    printf("Detected keyboard light with vendor: %s\n", device->vendor);
+                
                 if (adddevice(device, dbuf) != NULL) {
                     watch(sysfsdir, IN_MODIFY, watchcallback, device, NULL);
                 }

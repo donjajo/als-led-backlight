@@ -134,6 +134,7 @@ void *alswatchcallback(void *args)
     size_t sz = scanelements->totalbits / 8;
     unsigned char buffer[sz];
     ssize_t n = 0;
+    Config config = getconfig();
     
     pthread_mutex_lock(&device->mutex);
 
@@ -144,7 +145,8 @@ void *alswatchcallback(void *args)
         perror("read() failed");
     }
 
-    // printf("Read %ld bytes from element\n", n);
+    if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+        printf("Read %ld bytes from element\n", n);
 
     for (i = 0; i < scanelements->n; i++) {
         element = scanelements->elements[i];
@@ -160,14 +162,20 @@ void *alswatchcallback(void *args)
 
             device->percentage = (100/(float) device->max_value) * (float) *value;
             adjustdevices(device->percentage, dbuf);
-            printf("ALS Percentage: %lf\n", device->percentage);
+
+            if (config.verbose >= ALS_VERBOSE_LEVEL_1)
+                printf("ALS Percentage: %lf\n", device->percentage);
         }
     }
-    // printf("Modified: %s, fd: %d\n", device->path, fd);
+
+    if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+        printf("Modified: %s, fd: %d\n", device->path, fd);
 
     pthread_mutex_unlock(&device->mutex);
 
-    // printf("Exited thread: %ld\n", pthread_self());
+    if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+        printf("Exited thread: %ld\n", pthread_self());
+
     return NULL;
 }
 
@@ -177,6 +185,7 @@ int scanals(struct dbuf *dbuf)
     struct dirent *dirent;
     char devfile[PATH_MAX] = {0};
     Device *device = NULL;
+    Config config = getconfig();
     char *sysfsdir = strcat_("/sys/bus/iio/devices", "/");
     if (sysfsdir == NULL) {
         goto close;
@@ -197,7 +206,9 @@ int scanals(struct dbuf *dbuf)
 
         device = loadalsdevice(devicefile);
         if (device != NULL) {
-            printf("Detected Ambient Light Sensor Device\n");
+            if (config.verbose >= ALS_VERBOSE_LEVEL_1)
+                printf("Detected Ambient Light Sensor Device\n");
+
             if (alsenablebuffers(devicefile) == 1) {
                 strcat(devfile, "/dev/");
                 strcat(devfile, dirent->d_name);

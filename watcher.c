@@ -10,6 +10,7 @@
 #include <signal.h>
 
 #include "watcher.h"
+#include "config.h"
 
 struct watcherbuf *watcherbuf = NULL;
 
@@ -153,6 +154,7 @@ void initwatcher(struct dbuf *dbuf)
     int watchfds[5];
     struct watcherthreadargs *targs = NULL;
     size_t i, j = 0;
+    Config config = getconfig();
 
     // Since we both need to watch inotify events and other descriptors for new data, we are using select to group all of them
     FD_ZERO(&readfds);
@@ -222,7 +224,9 @@ void initwatcher(struct dbuf *dbuf)
 
                         pthread_create(&threads[i].tid, NULL, processevent, targs);
                         threads[i].args = targs;
-                        // printf("Started thread~~: %ld\n", threads[i].tid);
+
+                        if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+                            printf("Started thread~~: %ld\n", threads[i].tid);
 
                         p += sizeof(struct inotify_event) + evt->len;
                     }
@@ -239,7 +243,9 @@ void initwatcher(struct dbuf *dbuf)
 
                     pthread_create(&threads[i].tid, NULL, processevent, targs);
                     threads[i].args = targs;
-                    // printf("Started thread: %ld\n", threads[i].tid);
+
+                    if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+                        printf("Started thread: %ld\n", threads[i].tid);
                 }
 
                 pthread_mutex_unlock(&watcherbuf->mutex);
@@ -271,6 +277,7 @@ int watch(const char *pathname, uint32_t mask, void *(*callback)(void *args), vo
     int ret = 0, fd;
     struct watcher **watchers;
     uint8_t isinotify = mask != 0;
+    Config config = getconfig();
 
     pthread_mutex_lock(&watcherbuf->mutex);
 
@@ -317,15 +324,18 @@ int watch(const char *pathname, uint32_t mask, void *(*callback)(void *args), vo
     watcherbuf->watchers[watcherbuf->c++] = watcher;
 
     ret = 1;
-    // printf("Added watcher for %s; %d\n", pathname, fd);
-    // for (size_t i = 0; i < watcherbuf->c; i++) {
-    //     printf("Found %ld\n", i+1);
-    //     struct watcher *w = watcherbuf->watchers[i];
-    //     while (w->next != NULL) {
-    //         printf("Found another\n");
-    //         w = w->next;
-    //     }
-    // }
+
+    if (config.verbose >= ALS_VERBOSE_LEVEL_2) {
+        printf("Added watcher for %s; %d\n", pathname, fd);
+        for (size_t i = 0; i < watcherbuf->c; i++) {
+            printf("Found %ld\n", i+1);
+            struct watcher *w = watcherbuf->watchers[i];
+            while (w->next != NULL) {
+                printf("Found another\n");
+                w = w->next;
+            }
+        }
+    }
 
     result:
         if (ret == 0) {

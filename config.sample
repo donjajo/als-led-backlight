@@ -6,3 +6,6 @@ als_low_threshold = 428
 
 # Coming soon - To leave the keyboard state when it has been manually adjusted
 kbd_pause_on_manual_adjust = 0
+
+# Verbose level 0, 1, 2
+verbose=1
