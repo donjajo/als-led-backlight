@@ -41,6 +41,21 @@ char *rtrim(char *str, char c)
     return str;
 }
 
+char *ltrim(char *str, char c)
+{
+    size_t i = 0;
+
+    for (; str[i] == c; i++);
+
+    return &str[i];
+}
+
+char *trim(char *str, char c)
+{
+    str = rtrim(str, c);
+    return ltrim(str, c);
+}
+
 
 int setblocking(int fd, int status)
 {

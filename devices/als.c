@@ -12,6 +12,7 @@
 #include "../devices.h"
 #include "./als/scanelements.h"
 #include "als.h"
+#include "../config.h"
 
 /**
  * @brief Enable IIO scan_elements and buffering
@@ -91,6 +92,7 @@ void alsdestroydevice(void *self)
 Device *loadalsdevice(char *path)
 {
     Device *result = NULL;
+    Config config = getconfig();
     char devicename[51] = {0};
     char *namefile = strcat_(path, "/name");
     if (namefile == NULL)
@@ -110,7 +112,7 @@ Device *loadalsdevice(char *path)
     if (strcasecmp(devicename, "als") != 0)
         goto ret;
 
-    result = mkdevice(AMBIENT_LIGHT_SENSOR, "als", 0, ALS_LOW_THRESHOLD, ALS_HIGH_THRESHOLD, path, NULL, NULL, alsdestroydevice);
+    result = mkdevice(AMBIENT_LIGHT_SENSOR, "als", 0, config.alslowthreshold, config.alshighthreshold, path, NULL, NULL, alsdestroydevice);
 
     ret:
         if (namefile != NULL) {

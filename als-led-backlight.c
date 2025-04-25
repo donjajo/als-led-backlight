@@ -4,6 +4,7 @@
 #include "common.h"
 #include "devices.h"
 #include "watcher.h"
+#include "config.h"
 
 struct dbuf *devicesbuffer = NULL;
 pthread_mutex_t exitmutex;
@@ -58,6 +59,10 @@ int main()
     if (mkwatcherbuffer() == NULL) {
         fprintf(stderr, "Error creating watcher buffer\n");
 
+        goto close;
+    }
+
+    if (!configinit()) {
         goto close;
     }
 
