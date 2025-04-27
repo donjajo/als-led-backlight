@@ -257,7 +257,8 @@ int scanals(struct dbuf *dbuf)
         }
 
         if (ret == 0) {
-            destorydevice(device);
+            if (device != NULL)
+                destorydevice(device);
         }
 
         return ret;
