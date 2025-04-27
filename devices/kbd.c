@@ -39,10 +39,7 @@ void adjust(float ambvalue, void *self)
     int writerfd = *((int *) device->meta);
     char data = '1';
     uint8_t nvalue = 0;
-    float npercentage;
     Config config = getconfig();
-
-    pthread_mutex_lock(&device->mutex);
 
     if (ambvalue > 100) {
         nvalue = device->min_value;
@@ -50,9 +47,7 @@ void adjust(float ambvalue, void *self)
         nvalue = roundf((100 - ambvalue) / (100 / (float) device->max_value));
     }
 
-    npercentage = (100/(float) device->max_value) * (float) nvalue;
-
-    if (npercentage != device->percentage) {
+    if (nvalue != device->current_value) {
         data = nvalue + '0';
 
         if (write(writerfd, &data, sizeof(char)) <= 0) {
@@ -60,14 +55,12 @@ void adjust(float ambvalue, void *self)
             perror("");
         } else {
             prev = device->percentage;
-            device->percentage  = npercentage;
+            deviceupdate(nvalue, device, 0);
 
             if (config.verbose >= ALS_VERBOSE_LEVEL_1)
                 printf("Keyboard light adjusted from: %f -> %f\n", prev, device->percentage);
         }
     }
-
-    pthread_mutex_unlock(&device->mutex);
 }
 
 void destroy(void *self)
@@ -123,7 +116,7 @@ Device *loaddevice(char *path, char *vendor)
     fclose(f);
     free(maxfile);
 
-    result = mkdevice(KEYBOARD_BACKLIGHT, vendor, (100/max)*current, 0, max, path, adjust, writerfd, destroy);
+    result = mkdevice(KEYBOARD_BACKLIGHT, vendor, current, 0, max, path, adjust, writerfd, destroy);
 
     ret:
         if (brigfile != NULL)
@@ -132,16 +125,22 @@ Device *loaddevice(char *path, char *vendor)
         return result;
 }
 
-void *watchcallback(void *args)
+void *watchcallback(void *a)
 {
-    Device *device = (Device *) ((struct watcherthreadargs *) args)->metadata;
+    struct watcherthreadargs *args = (struct watcherthreadargs *) a;
+    Device *device = (Device *) args->metadata;
+    struct inotify_event *evt = (struct inotify_event *) args->evt;
     char filepath[PATH_MAX+1] = {0};
     int fd;
     char data;
     ssize_t n;
+    uint8_t ishdwrchng;
+    uint16_t updateopt = 0;
     Config config = getconfig();
 
-    pthread_mutex_lock(&device->mutex);
+   
+    ishdwrchng = strcasecmp(evt->name, "brightness_hw_changed") == 0;
+    
     strncat(filepath, device->path, PATH_MAX);
     strcat(filepath, "/brightness");
 
@@ -163,14 +162,21 @@ void *watchcallback(void *args)
 
     close(fd);
 
-    device->percentage = (100/(float) device->max_value) * (float) (data - '0');
+    data = data - '0';
+
+    if (ishdwrchng) {
+        if ((size_t) data > device->current_value)
+            updateopt = DEV_UP_ALS_MIN;
+        else
+            updateopt = DEV_UP_ALS_MAX;
+    }
+
+    deviceupdate(data, device, updateopt);
 
     if (config.verbose >= ALS_VERBOSE_LEVEL_1)
         printf("Keyboard light adjusted to: %.0f\n", device->percentage);
 
     ret:
-        pthread_mutex_unlock(&device->mutex);
-
         if (config.verbose >= ALS_VERBOSE_LEVEL_2)
             printf("Exited thread~~: %ld\n", pthread_self());
         return NULL;
@@ -200,7 +206,7 @@ int scankbdbacklight(struct dbuf *dbuf)
         return 0;
     }
 
-    int lfl = 0;
+    size_t lfl = 0;
     while ((file = readdir(sysfs)) != NULL) {
         if (strstr(file->d_name, "kbd_backlight") != NULL) {
             char *vendor = getvendorname(file->d_name);
@@ -216,7 +222,7 @@ int scankbdbacklight(struct dbuf *dbuf)
             if (device != NULL) {
                 if (config.verbose >= ALS_VERBOSE_LEVEL_1)
                     printf("Detected keyboard light with vendor: %s\n", device->vendor);
-                
+
                 if (adddevice(device, dbuf) != NULL) {
                     watch(sysfsdir, IN_MODIFY, watchcallback, device, NULL);
                 }

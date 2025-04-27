@@ -28,7 +28,7 @@ void exitgracefully()
     pthread_mutex_unlock(&exitmutex);
 }
 
-void sighandler(int sig)
+void sighandler()
 {
     exitgracefully();
 }

@@ -14,6 +14,13 @@
 #include "als.h"
 #include "../config.h"
 
+Device *alsdevice = NULL;
+
+Device *alsgetdevice()
+{
+    return alsdevice;
+}
+
 /**
  * @brief Enable IIO scan_elements and buffering
  * 
@@ -78,8 +85,9 @@ int alsenablebuffers(const char *path)
         return ret;
 }
 
-void alsdestroydevice(void *self)
+void alsdestroydevice()
 {
+
     alsdestroyscanelements();
 }
 
@@ -135,8 +143,6 @@ void *alswatchcallback(void *args)
     unsigned char buffer[sz];
     ssize_t n = 0;
     Config config = getconfig();
-    
-    pthread_mutex_lock(&device->mutex);
 
     n = read(fd, &buffer, sizeof(unsigned char[sz]));
 
@@ -160,8 +166,8 @@ void *alswatchcallback(void *args)
             *value = *value >> element->datatype.shifts;
             // *value = *value & ~(element->datatype.validbits/8);
 
-            device->percentage = (100/(float) device->max_value) * (float) *value;
-            adjustdevices(device->percentage, dbuf);
+            deviceupdate((size_t) *value, device, 0);
+            adjustdevices(device, dbuf);
 
             if (config.verbose >= ALS_VERBOSE_LEVEL_1)
                 printf("ALS Percentage: %lf\n", device->percentage);
@@ -170,8 +176,6 @@ void *alswatchcallback(void *args)
 
     if (config.verbose >= ALS_VERBOSE_LEVEL_2)
         printf("Modified: %s, fd: %d\n", device->path, fd);
-
-    pthread_mutex_unlock(&device->mutex);
 
     if (config.verbose >= ALS_VERBOSE_LEVEL_2)
         printf("Exited thread: %ld\n", pthread_self());
@@ -228,6 +232,7 @@ int scanals(struct dbuf *dbuf)
                     //     printf("Read: %ld\n", dd);
                     // }
                 
+                    alsdevice = device;
                     watch(devfile, 0, alswatchcallback, device, NULL);
                 }
 

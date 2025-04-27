@@ -1,6 +1,6 @@
 CC			= gcc
 PROG		= als-led-backlight
-CFLAGS		= -Wall -lm -pthread
+CFLAGS		= -Wall -Wextra -Werror -lm -pthread
 BUILDDIR	= build/
 SRC			= $(wildcard ./*.c) $(wildcard ./devices/*.c) $(wildcard ./devices/*/*.c)
 BINS		= $(SRC:%.c=%.o)

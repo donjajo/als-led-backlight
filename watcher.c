@@ -89,7 +89,7 @@ struct watcherbuf *mkwatcherbuffer()
         return NULL;
 }
 
-struct watcher *findwatcher(uint32_t wd, uint8_t isinotify)
+struct watcher *findwatcher(uint32_t wd)
 {
     size_t i = watcherbuf->c;
     struct watcher *watcher;
@@ -97,7 +97,7 @@ struct watcher *findwatcher(uint32_t wd, uint8_t isinotify)
     while (i--) {
         watcher = watcherbuf->watchers[i];
 
-        while (watcher != NULL && watcher->fd != wd) {
+        while (watcher != NULL && (uint32_t) watcher->fd != wd) {
             watcher = watcher->next;
         }
 
@@ -193,8 +193,6 @@ void initwatcher(struct dbuf *dbuf)
 
         for (i = 0; i < j; i++) {
             if (FD_ISSET(watchfds[i], &readfds)) {
-                targs = malloc(sizeof(struct watcherthreadargs));
-
                 n = read(watchfds[i], buffer, len);
 
                 if (n == 0) {
@@ -210,10 +208,12 @@ void initwatcher(struct dbuf *dbuf)
                 pthread_mutex_lock(&watcherbuf->mutex);
 
                 if (watchfds[i] == watcherbuf->fd) {
+                    targs = malloc(sizeof(struct watcherthreadargs));
+
                     for (p = buffer; p < buffer + n;) {
                         evt = (struct inotify_event *) p;
             
-                        watcher = findwatcher(evt->wd, 1);
+                        watcher = findwatcher(evt->wd);
                         targs->evt = evt;
                         targs->metadata = watcher->metadata;
                         targs->dbuf = dbuf;
@@ -231,7 +231,9 @@ void initwatcher(struct dbuf *dbuf)
                         p += sizeof(struct inotify_event) + evt->len;
                     }
                 } else {
-                    watcher = findwatcher(watchfds[i], 0);
+                    targs = malloc(sizeof(struct watcherthreadargs));
+
+                    watcher = findwatcher(watchfds[i]);
                     targs->evt = &watchfds[i];
                     targs->metadata = watcher->metadata;
                     targs->dbuf = dbuf;

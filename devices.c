@@ -6,17 +6,62 @@
 #include "devices.h"
 #include "devices/kbd.h"
 #include "devices/als.h"
+#include "config.h"
 
-Device *mkdevice(enum Device_Type type, const char *vendor, float percentage, size_t min_value, size_t max_value, const char *path, void (*adjust)(float ambvalue, void *self), void *meta, void (*destorycallback)(void *self))
+void devicecalculatepercentage(Device *dev)
+{
+    dev->percentage = (100/(float) dev->max_value) * (float) dev->current_value;
+}
+
+void deviceupdate(size_t current_value, Device *dev, uint8_t option)
+{
+    Device *alsdevice = alsgetdevice();
+    Config config = getconfig();
+
+    pthread_mutex_lock(&dev->mutex);
+
+    dev->current_value = current_value;
+    devicecalculatepercentage(dev);
+
+    if (option && alsdevice != NULL && dev->type != AMBIENT_LIGHT_SENSOR) {
+        if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+            printf("Current als_max = %d, als_min=%d\n", dev->als_max, dev->als_min);
+
+        if (option == DEV_UP_ALS_MAX) {
+            int32_t min = alsdevice->current_value - dev->als_max;
+
+            if (min < 0)
+                dev->als_min = 0;
+            else
+                dev->als_min += min;
+            dev->als_max = alsdevice->current_value;
+        }
+
+        if (option == DEV_UP_ALS_MIN) {
+            dev->als_max += alsdevice->current_value - dev->als_min;
+            dev->als_min = alsdevice->current_value;
+        }
+
+        if (config.verbose >= ALS_VERBOSE_LEVEL_2)
+            printf("New als_max = %d, als_min=%d, current=%ld\n", dev->als_max, dev->als_min, alsdevice->current_value);
+
+    }
+
+    pthread_mutex_unlock(&dev->mutex);
+}
+
+Device *mkdevice(enum Device_Type type, const char *vendor, size_t current_value, size_t min_value, size_t max_value, const char *path, void (*adjust)(float ambvalue, void *self), void *meta, void (*destorycallback)(void *self))
 {
     Device *device = malloc(sizeof(Device));
+    Config config = getconfig();
+
     if (device == NULL) {
         perror("malloc() failed");
         return device;
     }
 
     device->type = type;
-    device->percentage = percentage;
+    device->percentage = 0;
     device->min_value = min_value;
     device->max_value = max_value;
     memset(device->vendor, 0, sizeof(char[50]));
@@ -26,6 +71,9 @@ Device *mkdevice(enum Device_Type type, const char *vendor, float percentage, si
     device->destorycallback = destorycallback;
     memset(device->path, 0, sizeof(char[PATH_MAX]));
     strncpy(device->path, path, PATH_MAX);
+    device->als_min = config.alslowthreshold;
+    device->als_max = config.alshighthreshold;
+    device->current_value = current_value;
     
     if (pthread_mutex_init(&device->mutex, NULL) != 0) {
         perror("pthread_mutex_init() failed");
@@ -33,6 +81,8 @@ Device *mkdevice(enum Device_Type type, const char *vendor, float percentage, si
         destorydevice(device);
         return NULL;
     }
+
+    devicecalculatepercentage(device);
     
     return device;
 }
@@ -86,16 +136,24 @@ void destorydbuf(struct dbuf *buf)
     free(buf);
 }
 
-void adjustdevices(float alspercent, struct dbuf *dbuf)
+void adjustdevices(Device * alsdevice, struct dbuf *dbuf)
 {
     size_t i = 0;
     Device *device;
+    float v;
+    uint16_t currentvalue = alsdevice->current_value;
 
     for (i = 0; i < dbuf->c; i++) {
         device = dbuf->devices[i];
         
         if (device->adjust != NULL) {
-            device->adjust(alspercent, device);
+            if (currentvalue > device->als_max)
+                currentvalue = device->als_max;
+            if (currentvalue < device->als_min)
+                currentvalue = device->als_min;
+
+            v = ((float) (currentvalue - device->als_min) / (device->als_max - device->als_min)) * 100.0f;
+            device->adjust(v, device);
         }
     }
 }
