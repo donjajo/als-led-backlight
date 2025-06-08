@@ -85,7 +85,7 @@ int alsenablebuffers(const char *path)
         return ret;
 }
 
-void alsdestroydevice()
+void alsdestroydevice(void *)
 {
 
     alsdestroyscanelements();

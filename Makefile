@@ -22,3 +22,16 @@ $(PROG): $(BINS)
 clean:
 	rm -rf build/
 	find ./ -type f -name '*.o' -exec rm {} +
+
+install: all
+	cp -v $(BUILDDIR)$(PROG) /opt/$(PROG)
+	cp -v res/config.sample /etc/$(PROG).conf
+	cp -v res/systemd/$(PROG).service /etc/systemd/system/$(PROG).service
+	systemctl enable $(PROG)
+	systemctl start $(PROG)
+
+uninstall:
+	systemctl stop $(PROG)
+	systemctl disable $(PROG)
+	rm /etc/systemd/system/$(PROG).service
+	rm /opt/$(PROG)

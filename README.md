@@ -15,10 +15,24 @@ There is future plan to integrate LCD backlight too.
 make
 ```
 
-## Config
-Currently, it reads config file from `/etc/als-led-backlight.conf`. Copy the `config.sample` file in this repository to the location
-
 ## Running
 ```sh
 # ./build/als-led-backlight
+```
+
+## Installing
+Install the this package as a service by running with root privilege:
+```sh
+make install
+```
+
+Check the status of the service with `systemctl status als-led-backlight`
+
+## Config
+Currently, it reads config file from `/etc/als-led-backlight.conf`. You can adjust the base reading threshold with this configuration
+
+# Uninstalling
+Uninstall with root privilege using:
+```sh
+make uninstall
 ```
